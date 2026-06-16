@@ -94,7 +94,7 @@ Browser                          App (Next.js)                    e-flux / Road
    cp .env.example .env
    ```
 
-   Edit `.env` and set your `EFLUX_OAUTH_CLIENT_ID` and `EFLUX_OAUTH_CLIENT_SECRET`.
+   Edit `.env` and set your `ROAD_OAUTH_CLIENT_ID`, `ROAD_OAUTH_CLIENT_SECRET`, and `ROAD_PROVIDER_ID`.
 
 4. Start the development server:
 
@@ -108,11 +108,12 @@ Browser                          App (Next.js)                    e-flux / Road
 
 | Variable | Description | Default |
 |---|---|---|
-| `EFLUX_OAUTH_CLIENT_ID` | Your OAuth client ID (required) | - |
-| `EFLUX_OAUTH_CLIENT_SECRET` | Your OAuth client secret (required) | - |
+| `ROAD_OAUTH_CLIENT_ID` | Your OAuth client ID (required) | - |
+| `ROAD_OAUTH_CLIENT_SECRET` | Your OAuth client secret (required) | - |
 | `NEXT_PUBLIC_APP_URL` | Public URL of this app | `http://localhost:3000` |
-| `EFLUX_OIDC_DISCOVERY_URL` | OIDC discovery endpoint | `https://api.public.road.dev/1/marketplace/oauth/e-flux/.well-known/openid-configuration` |
-| `EFLUX_API_BASE_URL` | Road API base URL | `https://api.road.io` |
+| `ROAD_OIDC_DISCOVERY_URL` | OIDC discovery endpoint | `https://api.road.io/1/marketplace/oauth/<provider-slug>/.well-known/openid-configuration` |
+| `ROAD_API_BASE_URL` | Road API base URL | `https://api.road.io` |
+| `ROAD_PROVIDER_ID` | Provider identifier sent as the `Provider` header on ERE requests (required) | - |
 
 ## API documentation
 
