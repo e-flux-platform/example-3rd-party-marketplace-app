@@ -28,12 +28,21 @@ export async function GET() {
   }
 
   const apiBaseUrl =
-    process.env.EFLUX_API_BASE_URL || "https://api.road.io";
+    process.env.ROAD_API_BASE_URL || "https://api.road.io";
+  const providerId = process.env.ROAD_PROVIDER_ID;
+
+  if (!providerId) {
+    return NextResponse.json(
+      { error: "ROAD_PROVIDER_ID is not configured" },
+      { status: 500 }
+    );
+  }
 
   const response = await fetch(`${apiBaseUrl}/1/ere/sessions?limit=10`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
+      Provider: providerId,
     },
   });
 

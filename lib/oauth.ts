@@ -33,7 +33,7 @@ let cachedDiscovery: OidcDiscovery | null = null;
 async function getDiscovery(): Promise<OidcDiscovery> {
   if (cachedDiscovery) return cachedDiscovery;
 
-  const url = requireEnv("EFLUX_OIDC_DISCOVERY_URL");
+  const url = requireEnv("ROAD_OIDC_DISCOVERY_URL");
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -62,8 +62,8 @@ export async function getOAuthConfig(): Promise<OAuthConfig> {
   const discovery = await getDiscovery();
 
   return {
-    clientId: requireEnv("EFLUX_OAUTH_CLIENT_ID"),
-    clientSecret: requireEnv("EFLUX_OAUTH_CLIENT_SECRET"),
+    clientId: requireEnv("ROAD_OAUTH_CLIENT_ID"),
+    clientSecret: requireEnv("ROAD_OAUTH_CLIENT_SECRET"),
     authorizeUrl: discovery.authorization_endpoint,
     tokenUrl: discovery.token_endpoint,
     userinfoUrl: discovery.userinfo_endpoint,
