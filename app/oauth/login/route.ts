@@ -45,7 +45,7 @@ export async function GET() {
     response_type: "code",
     client_id: config.clientId,
     redirect_uri: config.callbackUrl,
-    scope: "openid offline_access chargers:read sessions:read",
+    scope: "openid email profile offline_access chargers:read sessions:read",
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
     prompt: "consent",

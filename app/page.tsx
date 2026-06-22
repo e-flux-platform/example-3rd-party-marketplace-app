@@ -119,9 +119,15 @@ export default function Home() {
             <div className="text-right text-sm text-muted-foreground">
               <p>
                 <span className="font-medium text-foreground">
-                  {String(user.sub ?? "Unknown")}
+                  {String(user.name ?? user.sub ?? "Unknown")}
                 </span>
               </p>
+              {user.email ? (
+                <p>
+                  {String(user.email)}
+                  {user.email_verified ? " ✓" : ""}
+                </p>
+              ) : null}
               {user.account_id ? <p>Account {String(user.account_id)}</p> : null}
               {user.provider_id ? <p>Provider {String(user.provider_id)}</p> : null}
             </div>
