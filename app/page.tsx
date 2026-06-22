@@ -14,6 +14,15 @@ type UserInfo = Record<string, unknown>;
 
 type EreEndpoint = "chargers" | "sessions";
 
+type AllSessionsResult = {
+  pageSize: number;
+  pageCount: number;
+  fetchedCount: number;
+  total: number | null;
+  capped: boolean;
+  sessions: unknown[];
+};
+
 export default function Home() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +40,13 @@ export default function Home() {
   > | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+
+  const [allSessions, setAllSessions] = useState<AllSessionsResult | null>(
+    null
+  );
+  const [allSessionsLoading, setAllSessionsLoading] = useState(false);
+  const [allSessionsError, setAllSessionsError] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState("10");
 
   useEffect(() => {
     fetch("/api/session")
@@ -73,6 +89,33 @@ export default function Home() {
       setErr(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLd(false);
+    }
+  }
+
+  async function loadAllSessions() {
+    setAllSessionsLoading(true);
+    setAllSessionsError(null);
+    setAllSessions(null);
+
+    try {
+      const res = await fetch(
+        `/api/ere/sessions/all?pageSize=${encodeURIComponent(pageSize)}`
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        setAllSessionsError(
+          data.error || `Request failed with status ${res.status}`
+        );
+      } else {
+        setAllSessions(data);
+      }
+    } catch (err) {
+      setAllSessionsError(
+        err instanceof Error ? err.message : "Unknown error"
+      );
+    } finally {
+      setAllSessionsLoading(false);
     }
   }
 
@@ -213,6 +256,99 @@ export default function Home() {
               <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-sm">
                 {JSON.stringify(sessionsData, null, 2)}
               </pre>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* All sessions (paginated) card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>All Sessions (paginated)</CardTitle>
+            <CardDescription>
+              Walk every page of your ERE sessions using the{" "}
+              <code className="rounded bg-muted px-1 py-0.5">
+                meta.nextSince
+              </code>{" "}
+              delta-sync cursor, then summarise how many times the endpoint was
+              called and how many records exist in total.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-muted-foreground">Page size</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={pageSize}
+                  onChange={(e) => setPageSize(e.target.value)}
+                  disabled={allSessionsLoading}
+                  className="h-9 w-28 rounded-md border bg-background px-3 text-sm"
+                />
+              </label>
+              <Button
+                onClick={loadAllSessions}
+                disabled={allSessionsLoading}
+              >
+                {allSessionsLoading ? "Paginating..." : "Load All Sessions"}
+              </Button>
+            </div>
+
+            {allSessionsError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                {allSessionsError}
+              </div>
+            )}
+
+            {allSessions !== null && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-md border bg-muted p-4">
+                    <p className="text-2xl font-semibold">
+                      {allSessions.pageSize}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Page size used
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted p-4">
+                    <p className="text-2xl font-semibold">
+                      {allSessions.pageCount}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Pagination endpoint calls
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted p-4">
+                    <p className="text-2xl font-semibold">
+                      {allSessions.total ?? "—"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Records available (meta.total)
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted p-4">
+                    <p className="text-2xl font-semibold">
+                      {allSessions.fetchedCount}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Records fetched
+                    </p>
+                  </div>
+                </div>
+
+                {allSessions.capped && (
+                  <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-400">
+                    Stopped at the safety cap before exhausting every page — the
+                    figures above may be incomplete.
+                  </div>
+                )}
+
+                <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-sm">
+                  {JSON.stringify(allSessions.sessions, null, 2)}
+                </pre>
+              </>
             )}
           </CardContent>
         </Card>
