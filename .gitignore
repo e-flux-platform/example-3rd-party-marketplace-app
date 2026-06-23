@@ -32,6 +32,9 @@ yarn-error.log*
 
 .env
 
+# dynamic client registration (holds the RFC 7592 management bearer token)
+.dcr-registration.json
+
 # vercel
 .vercel
 

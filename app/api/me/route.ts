@@ -3,13 +3,11 @@ import { getValidAccessToken } from "@/lib/oauth";
 import { getSession, saveSession } from "@/lib/session";
 
 /**
- * GET /api/ere/chargers
+ * GET /api/me
  *
- * Proxies the Road API ERE chargers endpoint.
- * Returns charger data including capacity, connector type, model, and
- * renewable energy percentage.
- *
- * @see https://documentation.road.io/reference/getv1erechargers
+ * Proxies GET /1/users/me. This is unrelated to ERE — it exercises a different
+ * part of the API surface to confirm the access token's ACL/scoping behaves as
+ * expected for the authenticated user.
  */
 export async function GET() {
   const [sessionId, session] = await getSession();
@@ -28,29 +26,21 @@ export async function GET() {
     await saveSession(sessionId, session);
   }
 
-  const apiBaseUrl =
-    process.env.ROAD_API_BASE_URL || "https://api.road.io";
+  const apiBaseUrl = process.env.ROAD_API_BASE_URL || "https://api.road.io";
   const providerId = process.env.ROAD_PROVIDER_ID;
 
-  if (!providerId) {
-    return NextResponse.json(
-      { error: "ROAD_PROVIDER_ID is not configured" },
-      { status: 500 }
-    );
-  }
-
-  const response = await fetch(`${apiBaseUrl}/1/ere/chargers`, {
+  const response = await fetch(`${apiBaseUrl}/1/users/me`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
-      Provider: providerId,
+      ...(providerId ? { Provider: providerId } : {}),
     },
   });
 
   if (!response.ok) {
     const body = await response.text();
     return NextResponse.json(
-      { error: "ERE chargers request failed", status: response.status, body },
+      { error: "users/me request failed", status: response.status, body },
       { status: response.status }
     );
   }

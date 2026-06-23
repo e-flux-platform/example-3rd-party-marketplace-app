@@ -10,7 +10,7 @@
 
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
-import { TokenSet } from "./oauth";
+import { TokenSet, OAuthMode } from "./oauth";
 
 const SESSION_COOKIE = "session_id";
 
@@ -19,6 +19,8 @@ export interface Session {
   userInfo?: Record<string, unknown>;
   /** PKCE code verifier, stored between the login redirect and the callback. */
   codeVerifier?: string;
+  /** Which client mode this flow/session uses (chosen at login). */
+  mode?: OAuthMode;
 }
 
 const sessions = new Map<string, Session>();

@@ -1,20 +1,47 @@
-import { NextResponse } from "next/server";
-import { getOAuthConfig, generatePkce } from "@/lib/oauth";
+import { NextRequest, NextResponse } from "next/server";
+import {
+  getOAuthConfig,
+  generatePkce,
+  isPreregisteredConfigured,
+  OAuthMode,
+} from "@/lib/oauth";
 import { getSession, saveSession } from "@/lib/session";
 
 /**
- * GET /oauth/login
+ * GET /oauth/login?mode=preregistered|dynamic
  *
- * Generates a PKCE challenge, stores the verifier in the session, and
- * redirects the user to the e-flux authorization page.
+ * Generates a PKCE challenge, stores the verifier + chosen mode in the session,
+ * and redirects the user to the e-flux authorization page. The mode is chosen
+ * by the user in the UI (not via the environment).
  */
-export async function GET() {
-  const config = await getOAuthConfig();
+export async function GET(request: NextRequest) {
+  const rawMode = request.nextUrl.searchParams.get("mode") || "preregistered";
+  if (rawMode !== "preregistered" && rawMode !== "dynamic") {
+    return NextResponse.json(
+      { error: `Invalid mode "${rawMode}"` },
+      { status: 400 }
+    );
+  }
+  const mode = rawMode as OAuthMode;
+
+  if (mode === "preregistered" && !isPreregisteredConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          "Preregistered mode is not configured (set ROAD_OAUTH_CLIENT_ID and ROAD_OAUTH_CLIENT_SECRET).",
+      },
+      { status: 400 }
+    );
+  }
+
+  // In dynamic mode this self-registers (or reuses the stored registration).
+  const config = await getOAuthConfig(mode);
   const { codeVerifier, codeChallenge } = generatePkce();
 
-  // Store the code verifier so we can send it during the token exchange
+  // Store the verifier + mode so the callback can exchange with the right client
   const [sessionId, session] = await getSession();
   session.codeVerifier = codeVerifier;
+  session.mode = mode;
   await saveSession(sessionId, session);
 
   /*
@@ -45,7 +72,7 @@ export async function GET() {
     response_type: "code",
     client_id: config.clientId,
     redirect_uri: config.callbackUrl,
-    scope: "openid email profile offline_access chargers:read sessions:read",
+    scope: config.scope,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
     prompt: "consent",

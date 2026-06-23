@@ -52,7 +52,8 @@ export async function GET(request: Request) {
   }
 
   const { accessToken, updatedTokens } = await getValidAccessToken(
-    session.tokens
+    session.tokens,
+    session.mode ?? "preregistered"
   );
 
   if (updatedTokens !== session.tokens) {

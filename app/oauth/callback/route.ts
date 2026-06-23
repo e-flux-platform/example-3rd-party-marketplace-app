@@ -34,7 +34,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const tokens = await exchangeCode(code, session.codeVerifier);
+  const tokens = await exchangeCode(
+    code,
+    session.codeVerifier,
+    session.mode ?? "preregistered"
+  );
 
   // Fetch user info from the OIDC userinfo endpoint
   const userInfo = await fetchUserInfo(tokens.access_token);

@@ -12,6 +12,30 @@ import {
 
 type UserInfo = Record<string, unknown>;
 
+type OAuthMode = "preregistered" | "dynamic";
+
+type PublicRegistration = {
+  issuer: string;
+  client_id: string;
+  registration_client_uri: string;
+  client_name: string;
+  scope: string;
+  registered_at: string;
+};
+
+// Scopes selectable at dynamic registration. Kept in sync with AVAILABLE_SCOPES
+// in lib/oauth.ts (not imported here — that module is server-only). `openid` is
+// required by the server.
+const AVAILABLE_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "offline_access",
+  "chargers:read",
+  "sessions:read",
+] as const;
+const REQUIRED_SCOPE = "openid";
+
 type EreEndpoint = "chargers" | "sessions";
 
 type AllSessionsResult = {
@@ -23,9 +47,161 @@ type AllSessionsResult = {
   sessions: unknown[];
 };
 
+function ModeBadge({ mode }: { mode: OAuthMode }) {
+  const dynamic = mode === "dynamic";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+        dynamic ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-600"
+      }`}
+      title={
+        dynamic
+          ? "Public client, self-registered via Dynamic Client Registration (RFC 7591)"
+          : "Confidential client using preconfigured credentials"
+      }
+    >
+      {dynamic ? "Dynamic client" : "Preregistered client"}
+    </span>
+  );
+}
+
+function RegistrationDetails({
+  registration,
+}: {
+  registration: PublicRegistration;
+}) {
+  return (
+    <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-[12rem_1fr]">
+      <dt className="font-medium text-muted-foreground">Client name</dt>
+      <dd>{registration.client_name}</dd>
+      <dt className="font-medium text-muted-foreground">Client ID</dt>
+      <dd className="break-all font-mono">{registration.client_id}</dd>
+      <dt className="font-medium text-muted-foreground">Scopes</dt>
+      <dd className="break-all">{registration.scope}</dd>
+      <dt className="font-medium text-muted-foreground">Registered at</dt>
+      <dd>{new Date(registration.registered_at).toLocaleString()}</dd>
+      <dt className="font-medium text-muted-foreground">Management URI</dt>
+      <dd className="break-all font-mono text-xs">
+        {registration.registration_client_uri}
+      </dd>
+    </dl>
+  );
+}
+
+function RegistrationManagement({
+  registration,
+  regBusy,
+  regError,
+  regNotice,
+  regRead,
+  newName,
+  setNewName,
+  onRead,
+  onUpdate,
+  onDeregister,
+}: {
+  registration: PublicRegistration;
+  regBusy: string | null;
+  regError: string | null;
+  regNotice: string | null;
+  regRead: Record<string, unknown> | null;
+  newName: string;
+  setNewName: (v: string) => void;
+  onRead: () => void;
+  onUpdate: () => void;
+  onDeregister: () => void;
+}) {
+  return (
+    <div className="space-y-4 border-t pt-4">
+      <p className="text-sm font-medium">Manage registration (RFC 7592)</p>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRead}
+          disabled={regBusy !== null}
+        >
+          {regBusy === "read" ? "Reading..." : "Read (GET)"}
+        </Button>
+
+        <div className="flex items-end gap-2">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">New client name</span>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={registration.client_name}
+              disabled={regBusy !== null}
+              className="h-9 w-64 rounded-md border bg-background px-3 text-sm"
+            />
+          </label>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onUpdate}
+            disabled={regBusy !== null || newName.trim() === ""}
+          >
+            {regBusy === "update" ? "Updating..." : "Update (PUT)"}
+          </Button>
+        </div>
+
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={onDeregister}
+          disabled={regBusy !== null}
+        >
+          {regBusy === "delete" ? "Deregistering..." : "Deregister (DELETE)"}
+        </Button>
+      </div>
+
+      {regNotice && (
+        <div className="rounded-md border border-emerald-500/50 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+          {regNotice}
+        </div>
+      )}
+
+      {regError && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          {regError}
+        </div>
+      )}
+
+      {regRead !== null && (
+        <pre className="max-h-72 overflow-auto rounded-md bg-muted p-4 text-sm">
+          {JSON.stringify(regRead, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  // The mode the active (authenticated) session logged in with; null when
+  // logged out. Both modes are otherwise offered side by side on the login page.
+  const [activeMode, setActiveMode] = useState<OAuthMode | null>(null);
+  const [preregConfigured, setPreregConfigured] = useState(false);
+  const [registration, setRegistration] = useState<PublicRegistration | null>(
+    null
+  );
+  const [regBusy, setRegBusy] = useState<
+    "register" | "read" | "update" | "delete" | "reset" | null
+  >(null);
+  const [regError, setRegError] = useState<string | null>(null);
+  const [regNotice, setRegNotice] = useState<string | null>(null);
+  const [regRead, setRegRead] = useState<Record<string, unknown> | null>(null);
+  const [newName, setNewName] = useState("");
+  const [selectedScopes, setSelectedScopes] = useState<string[]>([
+    ...AVAILABLE_SCOPES,
+  ]);
+
+  const [meData, setMeData] = useState<Record<string, unknown> | null>(null);
+  const [meLoading, setMeLoading] = useState(false);
+  const [meError, setMeError] = useState<string | null>(null);
 
   const [chargersData, setChargersData] = useState<Record<
     string,
@@ -52,8 +228,11 @@ export default function Home() {
     fetch("/api/session")
       .then((res) => res.json())
       .then((data) => {
+        setPreregConfigured(Boolean(data.preregisteredConfigured));
+        setRegistration(data.registration ?? null);
         if (data.authenticated) {
           setUser(data.user);
+          setActiveMode(data.mode ?? null);
         }
       })
       .finally(() => setLoading(false));
@@ -62,6 +241,142 @@ export default function Home() {
   async function logout() {
     await fetch("/api/session", { method: "DELETE" });
     window.location.reload();
+  }
+
+  // Clear all local state (session + stored registration; best-effort remote
+  // deregister) and start fresh.
+  async function clearAllState() {
+    setRegBusy("reset");
+    setRegError(null);
+    try {
+      await fetch("/api/state", { method: "DELETE" });
+      window.location.reload();
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : "Unknown error");
+      setRegBusy(null);
+    }
+  }
+
+  // -- RFC 7591 registration -------------------------------------------------
+
+  function toggleScope(scope: string) {
+    if (scope === REQUIRED_SCOPE) return; // always selected
+    setSelectedScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]
+    );
+  }
+
+  async function registerNow() {
+    setRegBusy("register");
+    setRegError(null);
+    setRegNotice(null);
+    try {
+      const res = await fetch("/api/registration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scopes: selectedScopes }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRegError(data.error || `Registration failed (${res.status})`);
+      } else {
+        setRegistration(data.registration);
+        setRegNotice("Registered via RFC 7591 — you can now log in with this client.");
+      }
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setRegBusy(null);
+    }
+  }
+
+  // -- RFC 7592 registration management --------------------------------------
+
+  async function readRegistration() {
+    setRegBusy("read");
+    setRegError(null);
+    setRegNotice(null);
+    setRegRead(null);
+    try {
+      const res = await fetch("/api/registration");
+      const data = await res.json();
+      if (!res.ok) {
+        setRegError(data.error || `Read failed (${res.status})`);
+      } else {
+        setRegRead(data.client);
+      }
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setRegBusy(null);
+    }
+  }
+
+  async function updateRegistration() {
+    setRegBusy("update");
+    setRegError(null);
+    setRegNotice(null);
+    try {
+      const res = await fetch("/api/registration", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_name: newName || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRegError(data.error || `Update failed (${res.status})`);
+      } else {
+        setRegistration(data.registration);
+        setRegRead(null);
+        setNewName("");
+        setRegNotice(
+          "Metadata updated — the management token was rotated server-side and re-persisted."
+        );
+      }
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setRegBusy(null);
+    }
+  }
+
+  async function deregister() {
+    setRegBusy("delete");
+    setRegError(null);
+    setRegNotice(null);
+    try {
+      const res = await fetch("/api/registration", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setRegError(data.error || `Deregister failed (${res.status})`);
+        setRegBusy(null);
+        return;
+      }
+      // Registration is gone; reload to the login screen (next login re-registers).
+      window.location.reload();
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : "Unknown error");
+      setRegBusy(null);
+    }
+  }
+
+  async function loadMe() {
+    setMeLoading(true);
+    setMeError(null);
+    setMeData(null);
+    try {
+      const res = await fetch("/api/me");
+      const data = await res.json();
+      if (!res.ok) {
+        setMeError(data.error || `Request failed with status ${res.status}`);
+      } else {
+        setMeData(data);
+      }
+    } catch (err) {
+      setMeError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setMeLoading(false);
+    }
   }
 
   async function loadEreData(endpoint: EreEndpoint) {
@@ -129,25 +444,140 @@ export default function Home() {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Marketplace App</CardTitle>
+      <div className="mx-auto min-h-screen max-w-3xl space-y-6 px-4 py-10">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold">Marketplace App</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Choose how this app authenticates with e-flux.
+          </p>
+        </div>
+
+        {/* Mode 1 — preregistered (confidential) client */}
+        <Card>
+          <CardHeader>
+            <div className="mb-1">
+              <ModeBadge mode="preregistered" />
+            </div>
+            <CardTitle>Preregistered app</CardTitle>
             <CardDescription>
-              Sign in with your e-flux account to get started.
+              A confidential client with a preconfigured client ID + secret,
+              installed by a provider admin.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex justify-center">
-            <Button
-              size="lg"
-              onClick={() => {
-                window.location.href = "/oauth/login";
-              }}
-            >
-              Login with e-flux
-            </Button>
+          <CardContent className="space-y-3">
+            {preregConfigured ? (
+              <Button
+                onClick={() => {
+                  window.location.href = "/oauth/login?mode=preregistered";
+                }}
+              >
+                Login (preregistered)
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Not configured. Set <code>ROAD_OAUTH_CLIENT_ID</code> and{" "}
+                <code>ROAD_OAUTH_CLIENT_SECRET</code> to enable this mode.
+              </p>
+            )}
           </CardContent>
         </Card>
+
+        {/* Mode 2 — dynamic (self-registered) client */}
+        <Card>
+          <CardHeader>
+            <div className="mb-1">
+              <ModeBadge mode="dynamic" />
+            </div>
+            <CardTitle>Self-registration (RFC 7591)</CardTitle>
+            <CardDescription>
+              A public client that registers itself — no admin and no client
+              secret. Authenticates with PKCE only.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!registration ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  No registration yet. Choose the scopes to request, then
+                  register to obtain a client ID and a management token (RFC
+                  7592).
+                </p>
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium">Requested scopes</legend>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {AVAILABLE_SCOPES.map((scope) => {
+                      const required = scope === REQUIRED_SCOPE;
+                      return (
+                        <label
+                          key={scope}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedScopes.includes(scope)}
+                            disabled={required || regBusy !== null}
+                            onChange={() => toggleScope(scope)}
+                          />
+                          <span className="font-mono">{scope}</span>
+                          {required && (
+                            <span className="text-xs text-muted-foreground">
+                              (required)
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+                <Button
+                  onClick={registerNow}
+                  disabled={regBusy !== null || selectedScopes.length === 0}
+                >
+                  {regBusy === "register" ? "Registering..." : "Register now"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <RegistrationDetails registration={registration} />
+                <RegistrationManagement
+                  registration={registration}
+                  regBusy={regBusy}
+                  regError={regError}
+                  regNotice={regNotice}
+                  regRead={regRead}
+                  newName={newName}
+                  setNewName={setNewName}
+                  onRead={readRegistration}
+                  onUpdate={updateRegistration}
+                  onDeregister={deregister}
+                />
+                <Button
+                  onClick={() => {
+                    window.location.href = "/oauth/login?mode=dynamic";
+                  }}
+                  disabled={regBusy !== null}
+                >
+                  Login with this app
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Reset */}
+        <div className="flex items-center justify-between rounded-md border border-dashed p-4">
+          <p className="text-sm text-muted-foreground">
+            Clear the session and any stored registration to start over.
+          </p>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={clearAllState}
+            disabled={regBusy !== null}
+          >
+            {regBusy === "reset" ? "Clearing..." : "Clear all state"}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -157,7 +587,10 @@ export default function Home() {
       {/* Header with user info */}
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <h1 className="text-lg font-semibold">Marketplace App</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-semibold">Marketplace App</h1>
+            {activeMode && <ModeBadge mode={activeMode} />}
+          </div>
           <div className="flex items-center gap-4">
             <div className="text-right text-sm text-muted-foreground">
               <p>
@@ -183,6 +616,61 @@ export default function Home() {
 
       {/* Main content */}
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
+        {/* Dynamic registration (RFC 7591) — shown whenever one exists */}
+        {registration && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Dynamic Registration</CardTitle>
+              <CardDescription>
+                This client registered itself with the provider via RFC 7591.
+                It is a public client and authenticates with PKCE only — no
+                client secret was ever issued.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <RegistrationDetails registration={registration} />
+              <RegistrationManagement
+                registration={registration}
+                regBusy={regBusy}
+                regError={regError}
+                regNotice={regNotice}
+                regRead={regRead}
+                newName={newName}
+                setNewName={setNewName}
+                onRead={readRegistration}
+                onUpdate={updateRegistration}
+                onDeregister={deregister}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* users/me — ERE-unrelated, proves the access token's ACL */}
+        <Card>
+          <CardHeader>
+            <CardTitle>User (GET /1/users/me)</CardTitle>
+            <CardDescription>
+              An ERE-unrelated call that exercises a different part of the API
+              to confirm the access token&apos;s ACL/scoping behaves as expected.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button onClick={loadMe} disabled={meLoading}>
+              {meLoading ? "Loading..." : "Load /users/me"}
+            </Button>
+            {meError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                {meError}
+              </div>
+            )}
+            {meData !== null && (
+              <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-sm">
+                {JSON.stringify(meData, null, 2)}
+              </pre>
+            )}
+          </CardContent>
+        </Card>
+
         {/* User info */}
         <Card>
           <CardHeader>
