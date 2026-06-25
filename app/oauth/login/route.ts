@@ -4,6 +4,7 @@ import {
   generatePkce,
   isPreregisteredConfigured,
   OAuthMode,
+  AVAILABLE_SCOPES,
 } from "@/lib/oauth";
 import { getSession, saveSession } from "@/lib/session";
 
@@ -61,6 +62,22 @@ export async function GET(request: NextRequest) {
   const config = await getOAuthConfig(mode);
   const { codeVerifier, codeChallenge } = generatePkce();
 
+  // Scopes to request, chosen in the UI (space-separated). Validated against the
+  // known set; `openid` is always included. Falls back to the client's full /
+  // registered scope set when nothing is passed. For a preregistered client the
+  // selection must be within the installation's registered scopes; for a dynamic
+  // client, within what it registered. The provider rejects anything beyond that.
+  const rawScope = request.nextUrl.searchParams.get("scope");
+  let requestedScope = config.scope;
+  if (rawScope) {
+    const picked = rawScope
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter((s) => (AVAILABLE_SCOPES as readonly string[]).includes(s));
+    const withOpenId = picked.includes("openid") ? picked : ["openid", ...picked];
+    if (withOpenId.length > 0) requestedScope = withOpenId.join(" ");
+  }
+
   // Store the verifier + mode so the callback can exchange with the right client
   const [sessionId, session] = await getSession();
   session.codeVerifier = codeVerifier;
@@ -97,7 +114,7 @@ export async function GET(request: NextRequest) {
     response_type: "code",
     client_id: config.clientId,
     redirect_uri: config.callbackUrl,
-    scope: config.scope,
+    scope: requestedScope,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
   });

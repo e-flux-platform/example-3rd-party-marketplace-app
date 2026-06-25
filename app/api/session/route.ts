@@ -33,6 +33,9 @@ export async function GET() {
     mode: session.mode ?? "preregistered",
     preregisteredConfigured,
     registration,
+    // Demo convenience: expose the issued tokens so the home page can show them
+    // for easy copy. A real app would never return tokens to the browser.
+    tokens: session.tokens ?? null,
   });
 }
 

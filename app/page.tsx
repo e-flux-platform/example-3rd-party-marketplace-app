@@ -23,9 +23,19 @@ type PublicRegistration = {
   registered_at: string;
 };
 
-// Scopes selectable at dynamic registration. Kept in sync with AVAILABLE_SCOPES
-// in lib/oauth.ts (not imported here — that module is server-only). `openid` is
-// required by the server.
+type SessionTokens = {
+  access_token: string;
+  id_token?: string;
+  refresh_token?: string;
+  token_type?: string;
+  expires_at?: number;
+};
+
+// Scopes selectable at dynamic registration and at login. Kept in sync with
+// AVAILABLE_SCOPES in lib/oauth.ts (not imported here, that module is
+// server-only). `openid` is required by the server. `mcp` is the full-delegation
+// marker: when requested the provider collapses the grant to a delegation token
+// and shows the "acts as you" consent.
 const AVAILABLE_SCOPES = [
   "openid",
   "email",
@@ -33,6 +43,7 @@ const AVAILABLE_SCOPES = [
   "offline_access",
   "chargers:read",
   "sessions:read",
+  "mcp",
 ] as const;
 const REQUIRED_SCOPE = "openid";
 
@@ -72,6 +83,58 @@ function ModeBadge({ mode }: { mode: OAuthMode }) {
     >
       {dynamic ? "Dynamic client" : "Preregistered client"}
     </span>
+  );
+}
+
+function TokenField({ label, value }: { label: string; value: string }) {
+  return (
+    <label className="flex flex-col gap-1 text-sm">
+      <span className="font-medium">{label}</span>
+      <textarea
+        readOnly
+        value={value}
+        rows={3}
+        onFocus={(e) => e.currentTarget.select()}
+        className="w-full resize-y rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs"
+      />
+    </label>
+  );
+}
+
+function ScopeSelect({
+  selected,
+  onToggle,
+  disabled,
+  label = "Requested scopes",
+}: {
+  selected: string[];
+  onToggle: (scope: string) => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium">{label}</legend>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {AVAILABLE_SCOPES.map((scope) => {
+          const required = scope === REQUIRED_SCOPE;
+          return (
+            <label key={scope} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selected.includes(scope)}
+                disabled={required || disabled}
+                onChange={() => onToggle(scope)}
+              />
+              <span className="font-mono">{scope}</span>
+              {required && (
+                <span className="text-xs text-muted-foreground">(required)</span>
+              )}
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 
@@ -223,6 +286,7 @@ function RegistrationManagement({
 
 export default function Home() {
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [tokens, setTokens] = useState<SessionTokens | null>(null);
   const [loading, setLoading] = useState(true);
   // The mode the active (authenticated) session logged in with; null when
   // logged out. Both modes are otherwise offered side by side on the login page.
@@ -278,6 +342,7 @@ export default function Home() {
         if (data.authenticated) {
           setUser(data.user);
           setActiveMode(data.mode ?? null);
+          setTokens(data.tokens ?? null);
         }
       })
       .finally(() => setLoading(false));
@@ -512,6 +577,10 @@ export default function Home() {
           <CardContent className="space-y-3">
             {preregConfigured ? (
               <>
+                <ScopeSelect
+                  selected={selectedScopes}
+                  onToggle={toggleScope}
+                />
                 <PromptSelect
                   id="prompt-preregistered"
                   value={prompt}
@@ -521,7 +590,7 @@ export default function Home() {
                   onClick={() => {
                     window.location.href = `/oauth/login?mode=preregistered&prompt=${encodeURIComponent(
                       prompt
-                    )}`;
+                    )}&scope=${encodeURIComponent(selectedScopes.join(" "))}`;
                   }}
                 >
                   Login (preregistered)
@@ -556,33 +625,11 @@ export default function Home() {
                   register to obtain a client ID and a management token (RFC
                   7592).
                 </p>
-                <fieldset className="space-y-2">
-                  <legend className="text-sm font-medium">Requested scopes</legend>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {AVAILABLE_SCOPES.map((scope) => {
-                      const required = scope === REQUIRED_SCOPE;
-                      return (
-                        <label
-                          key={scope}
-                          className="flex items-center gap-2 text-sm"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedScopes.includes(scope)}
-                            disabled={required || regBusy !== null}
-                            onChange={() => toggleScope(scope)}
-                          />
-                          <span className="font-mono">{scope}</span>
-                          {required && (
-                            <span className="text-xs text-muted-foreground">
-                              (required)
-                            </span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </fieldset>
+                <ScopeSelect
+                  selected={selectedScopes}
+                  onToggle={toggleScope}
+                  disabled={regBusy !== null}
+                />
                 <Button
                   onClick={registerNow}
                   disabled={regBusy !== null || selectedScopes.length === 0}
@@ -605,6 +652,12 @@ export default function Home() {
                   onUpdate={updateRegistration}
                   onDeregister={deregister}
                 />
+                <ScopeSelect
+                  selected={selectedScopes}
+                  onToggle={toggleScope}
+                  disabled={regBusy !== null}
+                  label="Requested scopes (must be within the registered set)"
+                />
                 <PromptSelect
                   id="prompt-dynamic"
                   value={prompt}
@@ -615,7 +668,7 @@ export default function Home() {
                   onClick={() => {
                     window.location.href = `/oauth/login?mode=dynamic&prompt=${encodeURIComponent(
                       prompt
-                    )}`;
+                    )}&scope=${encodeURIComponent(selectedScopes.join(" "))}`;
                   }}
                   disabled={regBusy !== null}
                 >
@@ -678,6 +731,38 @@ export default function Home() {
 
       {/* Main content */}
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
+        {/* OAuth tokens — shown for easy copy while testing */}
+        {tokens && (
+          <Card>
+            <CardHeader>
+              <CardTitle>OAuth tokens</CardTitle>
+              <CardDescription>
+                The tokens issued for this session. The access token is the
+                Bearer credential for API / MCP calls. Click a field to select
+                it.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <TokenField label="Access token" value={tokens.access_token} />
+              {tokens.id_token && (
+                <TokenField label="ID token" value={tokens.id_token} />
+              )}
+              {tokens.refresh_token && (
+                <TokenField
+                  label="Refresh token"
+                  value={tokens.refresh_token}
+                />
+              )}
+              {tokens.expires_at && (
+                <p className="text-xs text-muted-foreground">
+                  Access token expires{" "}
+                  {new Date(tokens.expires_at).toLocaleString()}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Dynamic registration (RFC 7591) — shown whenever one exists */}
         {registration && (
           <Card>

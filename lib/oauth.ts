@@ -29,6 +29,10 @@ export const AVAILABLE_SCOPES = [
   "offline_access",
   "chargers:read",
   "sessions:read",
+  // Full-delegation marker for the MCP resource server. When requested, the
+  // provider collapses the grant to a delegation token (the granular data
+  // scopes are dropped) and shows the "acts as you" consent.
+  "mcp",
 ] as const;
 
 // Default / full scope set (preregistered mode requests all of these).
