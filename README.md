@@ -172,7 +172,7 @@ Browser                          App (Next.js)                    e-flux / Road
 | `ROAD_OAUTH_LOGO_URI` | Optional logo URL sent at dynamic registration | - |
 | `ROAD_OAUTH_REGISTRATION_STORE` | Path to the persisted dynamic registration | `./.dcr-registration.json` |
 | `NEXT_PUBLIC_APP_URL` | Public URL of this app | `http://localhost:3000` |
-| `ROAD_OIDC_DISCOVERY_URL` | OIDC discovery endpoint | `https://api.road.io/1/marketplace/oauth/<provider-slug>/.well-known/openid-configuration` |
+| `ROAD_OIDC_DISCOVERY_URL` | OIDC discovery endpoint | `https://api.road.io/1/oauth/<provider-slug>/.well-known/openid-configuration` |
 | `ROAD_API_BASE_URL` | Road API base URL | `https://api.road.io` |
 | `ROAD_PROVIDER_ID` | Provider identifier sent as the `Provider` header on ERE requests (required) | - |
 

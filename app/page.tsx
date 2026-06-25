@@ -36,6 +36,16 @@ const AVAILABLE_SCOPES = [
 ] as const;
 const REQUIRED_SCOPE = "openid";
 
+// OIDC `prompt` values selectable before login. Kept in sync with
+// VALID_PROMPTS in app/oauth/login/route.ts. The empty value omits the
+// `prompt` parameter entirely (provider default behaviour).
+const PROMPT_OPTIONS = [
+  { value: "consent", label: "consent — force the consent screen" },
+  { value: "none", label: "none — no UI (errors if interaction needed)" },
+  { value: "", label: "(don't send the prompt parameter)" },
+] as const;
+type Prompt = (typeof PROMPT_OPTIONS)[number]["value"];
+
 type EreEndpoint = "chargers" | "sessions";
 
 type AllSessionsResult = {
@@ -62,6 +72,39 @@ function ModeBadge({ mode }: { mode: OAuthMode }) {
     >
       {dynamic ? "Dynamic client" : "Preregistered client"}
     </span>
+  );
+}
+
+function PromptSelect({
+  id,
+  value,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  value: Prompt;
+  onChange: (value: Prompt) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label htmlFor={id} className="flex flex-col gap-1 text-sm">
+      <span className="text-muted-foreground">
+        Authorization prompt (OIDC <code>prompt</code>)
+      </span>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value as Prompt)}
+        disabled={disabled}
+        className="h-9 w-full max-w-sm rounded-md border bg-background px-3 text-sm"
+      >
+        {PROMPT_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -198,6 +241,8 @@ export default function Home() {
   const [selectedScopes, setSelectedScopes] = useState<string[]>([
     ...AVAILABLE_SCOPES,
   ]);
+  // OIDC `prompt` value to send on the next login; chosen per login card.
+  const [prompt, setPrompt] = useState<Prompt>("consent");
 
   const [meData, setMeData] = useState<Record<string, unknown> | null>(null);
   const [meLoading, setMeLoading] = useState(false);
@@ -466,13 +511,22 @@ export default function Home() {
           </CardHeader>
           <CardContent className="space-y-3">
             {preregConfigured ? (
-              <Button
-                onClick={() => {
-                  window.location.href = "/oauth/login?mode=preregistered";
-                }}
-              >
-                Login (preregistered)
-              </Button>
+              <>
+                <PromptSelect
+                  id="prompt-preregistered"
+                  value={prompt}
+                  onChange={setPrompt}
+                />
+                <Button
+                  onClick={() => {
+                    window.location.href = `/oauth/login?mode=preregistered&prompt=${encodeURIComponent(
+                      prompt
+                    )}`;
+                  }}
+                >
+                  Login (preregistered)
+                </Button>
+              </>
             ) : (
               <p className="text-sm text-muted-foreground">
                 Not configured. Set <code>ROAD_OAUTH_CLIENT_ID</code> and{" "}
@@ -551,9 +605,17 @@ export default function Home() {
                   onUpdate={updateRegistration}
                   onDeregister={deregister}
                 />
+                <PromptSelect
+                  id="prompt-dynamic"
+                  value={prompt}
+                  onChange={setPrompt}
+                  disabled={regBusy !== null}
+                />
                 <Button
                   onClick={() => {
-                    window.location.href = "/oauth/login?mode=dynamic";
+                    window.location.href = `/oauth/login?mode=dynamic&prompt=${encodeURIComponent(
+                      prompt
+                    )}`;
                   }}
                   disabled={regBusy !== null}
                 >

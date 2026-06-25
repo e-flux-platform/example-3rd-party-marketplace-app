@@ -7,12 +7,19 @@ import {
 } from "@/lib/oauth";
 import { getSession, saveSession } from "@/lib/session";
 
+// OIDC `prompt` values this app lets the user pick from the UI (see the
+// comment below for what each one does). A single value is supported here;
+// the spec also allows a space-delimited combination.
+const VALID_PROMPTS = ["none", "consent"] as const;
+type Prompt = (typeof VALID_PROMPTS)[number];
+
 /**
- * GET /oauth/login?mode=preregistered|dynamic
+ * GET /oauth/login?mode=preregistered|dynamic&prompt=consent
  *
  * Generates a PKCE challenge, stores the verifier + chosen mode in the session,
- * and redirects the user to the e-flux authorization page. The mode is chosen
- * by the user in the UI (not via the environment).
+ * and redirects the user to the e-flux authorization page. The mode and the
+ * OIDC `prompt` value are both chosen by the user in the UI (not via the
+ * environment).
  */
 export async function GET(request: NextRequest) {
   const rawMode = request.nextUrl.searchParams.get("mode") || "preregistered";
@@ -23,6 +30,22 @@ export async function GET(request: NextRequest) {
     );
   }
   const mode = rawMode as OAuthMode;
+
+  // The `prompt` param is optional. An explicit empty value ("?prompt=") means
+  // "omit the prompt parameter entirely" so the provider applies its default
+  // behaviour; a missing param defaults to "consent".
+  const rawPrompt = request.nextUrl.searchParams.get("prompt");
+  const prompt = rawPrompt === null ? "consent" : rawPrompt;
+  if (prompt !== "" && !VALID_PROMPTS.includes(prompt as Prompt)) {
+    return NextResponse.json(
+      {
+        error: `Invalid prompt "${prompt}" (expected one of: ${VALID_PROMPTS.join(
+          ", "
+        )} or empty to omit)`,
+      },
+      { status: 400 }
+    );
+  }
 
   if (mode === "preregistered" && !isPreregisteredConfigured()) {
     return NextResponse.json(
@@ -64,9 +87,11 @@ export async function GET(request: NextRequest) {
    *   - "select_account" Prompt the user to pick which account to sign in
    *                      with, when the IdP supports multiple accounts.
    *
-   * We pass "consent" here so the user is asked to confirm the requested
-   * scopes on every authorization flow, which is helpful while developing
-   * and demoing this marketplace integration.
+   * The value is chosen by the user in the UI before login (defaulting to
+   * "consent"), so the different behaviours can be demonstrated. The user can
+   * also choose to omit the parameter entirely, leaving the provider's default
+   * behaviour in place. Forcing the consent screen on every flow is helpful
+   * while developing and demoing this marketplace integration.
    */
   const params = new URLSearchParams({
     response_type: "code",
@@ -75,8 +100,9 @@ export async function GET(request: NextRequest) {
     scope: config.scope,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
-    prompt: "consent",
   });
+  // Only include `prompt` when a value was chosen; an empty selection omits it.
+  if (prompt !== "") params.set("prompt", prompt);
 
   return NextResponse.redirect(`${config.authorizeUrl}?${params.toString()}`);
 }
