@@ -43,6 +43,8 @@ const AVAILABLE_SCOPES = [
   "offline_access",
   "chargers:read",
   "sessions:read",
+  "account:read",
+  "account:billing:read",
   "mcp",
 ] as const;
 const REQUIRED_SCOPE = "openid";
@@ -302,15 +304,23 @@ export default function Home() {
   const [regNotice, setRegNotice] = useState<string | null>(null);
   const [regRead, setRegRead] = useState<Record<string, unknown> | null>(null);
   const [newName, setNewName] = useState("");
-  const [selectedScopes, setSelectedScopes] = useState<string[]>([
-    ...AVAILABLE_SCOPES,
-  ]);
+  // `mcp` (full-delegation) is off by default — opt in deliberately.
+  const [selectedScopes, setSelectedScopes] = useState<string[]>(
+    AVAILABLE_SCOPES.filter((scope) => scope !== "mcp")
+  );
   // OIDC `prompt` value to send on the next login; chosen per login card.
   const [prompt, setPrompt] = useState<Prompt>("consent");
 
   const [meData, setMeData] = useState<Record<string, unknown> | null>(null);
   const [meLoading, setMeLoading] = useState(false);
   const [meError, setMeError] = useState<string | null>(null);
+
+  const [accountData, setAccountData] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
 
   const [chargersData, setChargersData] = useState<Record<
     string,
@@ -486,6 +496,27 @@ export default function Home() {
       setMeError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setMeLoading(false);
+    }
+  }
+
+  async function loadAccount() {
+    setAccountLoading(true);
+    setAccountError(null);
+    setAccountData(null);
+    try {
+      const res = await fetch("/api/account");
+      const data = await res.json();
+      if (!res.ok) {
+        setAccountError(
+          data.error || `Request failed with status ${res.status}`
+        );
+      } else {
+        setAccountData(data);
+      }
+    } catch (err) {
+      setAccountError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setAccountLoading(false);
     }
   }
 
@@ -813,6 +844,33 @@ export default function Home() {
             {meData !== null && (
               <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-sm">
                 {JSON.stringify(meData, null, 2)}
+              </pre>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Account self (account scope) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Account</CardTitle>
+            <CardDescription>
+              Calls /1/accounts/self with the <code>account</code> scope, acting
+              as the user. Billing fields appear only when the user&apos;s RBAC
+              allows (account admins).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button onClick={loadAccount} disabled={accountLoading}>
+              {accountLoading ? "Loading..." : "Load /accounts/self"}
+            </Button>
+            {accountError && (
+              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                {accountError}
+              </div>
+            )}
+            {accountData !== null && (
+              <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-sm">
+                {JSON.stringify(accountData, null, 2)}
               </pre>
             )}
           </CardContent>

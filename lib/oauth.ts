@@ -29,6 +29,10 @@ export const AVAILABLE_SCOPES = [
   "offline_access",
   "chargers:read",
   "sessions:read",
+  // Read the user's own account via /1/accounts/self (name + contact).
+  "account:read",
+  // Read the account's billing details (in addition to `account:read`); still gated by RBAC.
+  "account:billing:read",
   // Full-delegation marker for the MCP resource server. When requested, the
   // provider collapses the grant to a delegation token (the granular data
   // scopes are dropped) and shows the "acts as you" consent.
