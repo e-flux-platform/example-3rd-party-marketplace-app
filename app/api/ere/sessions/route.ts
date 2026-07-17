@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getValidAccessToken } from "@/lib/oauth";
+import {
+  getValidAccessToken,
+  headersToObject,
+  OAuthRequestError,
+  parseResponseBody,
+} from "@/lib/oauth";
 import { getSession, saveSession } from "@/lib/session";
 
 /**
@@ -18,13 +23,30 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { accessToken, updatedTokens } = await getValidAccessToken(
-    session.tokens
-  );
+  let accessToken: string;
+  try {
+    const result = await getValidAccessToken(session.tokens);
+    accessToken = result.accessToken;
 
-  if (updatedTokens !== session.tokens) {
-    session.tokens = updatedTokens;
-    await saveSession(sessionId, session);
+    if (result.updatedTokens !== session.tokens) {
+      session.tokens = result.updatedTokens;
+      await saveSession(sessionId, session);
+    }
+  } catch (err) {
+    if (err instanceof OAuthRequestError) {
+      // Surface the token endpoint's actual error response, e.g.
+      // invalid_grant when the grant has been revoked server-side.
+      return NextResponse.json(
+        {
+          error: "Token refresh failed",
+          status: err.status,
+          body: err.body,
+          headers: err.headers,
+        },
+        { status: 401 }
+      );
+    }
+    throw err;
   }
 
   const apiBaseUrl =
@@ -47,9 +69,14 @@ export async function GET() {
   });
 
   if (!response.ok) {
-    const body = await response.text();
+    const body = await parseResponseBody(response);
     return NextResponse.json(
-      { error: "ERE sessions request failed", status: response.status, body },
+      {
+        error: "ERE sessions request failed",
+        status: response.status,
+        body,
+        headers: headersToObject(response.headers),
+      },
       { status: response.status }
     );
   }

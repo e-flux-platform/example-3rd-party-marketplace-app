@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getValidAccessToken } from "@/lib/oauth";
+import {
+  getValidAccessToken,
+  headersToObject,
+  OAuthRequestError,
+  parseResponseBody,
+} from "@/lib/oauth";
 import { getSession, saveSession } from "@/lib/session";
 
 /**
@@ -18,27 +23,48 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { accessToken, updatedTokens } = await getValidAccessToken(
-    session.tokens
-  );
+  let accessToken: string;
+  try {
+    const result = await getValidAccessToken(session.tokens);
+    accessToken = result.accessToken;
 
-  if (updatedTokens !== session.tokens) {
-    session.tokens = updatedTokens;
-    await saveSession(sessionId, session);
+    if (result.updatedTokens !== session.tokens) {
+      session.tokens = result.updatedTokens;
+      await saveSession(sessionId, session);
+    }
+  } catch (err) {
+    if (err instanceof OAuthRequestError) {
+      // Surface the token endpoint's actual error response, e.g.
+      // invalid_grant when the grant has been revoked server-side.
+      return NextResponse.json(
+        {
+          error: "Token refresh failed",
+          status: err.status,
+          body: err.body,
+          headers: err.headers,
+        },
+        { status: 401 },
+      );
+    }
+    throw err;
   }
 
-  const apiBaseUrl =
-    process.env.ROAD_API_BASE_URL || "https://api.road.io";
+  const apiBaseUrl = process.env.ROAD_API_BASE_URL || "https://api.road.io";
   const providerId = process.env.ROAD_PROVIDER_ID;
 
   if (!providerId) {
     return NextResponse.json(
       { error: "ROAD_PROVIDER_ID is not configured" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
-  const response = await fetch(`${apiBaseUrl}/1/ere/chargers`, {
+  const url = `${apiBaseUrl}/1/ere/chargers`;
+  console.log(
+    `Fetching ERE chargers from ${url} with provider ID ${providerId}`,
+  );
+
+  const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
@@ -47,10 +73,15 @@ export async function GET() {
   });
 
   if (!response.ok) {
-    const body = await response.text();
+    const body = await parseResponseBody(response);
     return NextResponse.json(
-      { error: "ERE chargers request failed", status: response.status, body },
-      { status: response.status }
+      {
+        error: "ERE chargers request failed",
+        status: response.status,
+        body,
+        headers: headersToObject(response.headers),
+      },
+      { status: response.status },
     );
   }
 

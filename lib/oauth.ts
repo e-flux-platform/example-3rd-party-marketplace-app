@@ -16,6 +16,50 @@ function requireEnv(name: string): string {
   return value;
 }
 
+// -- Errors ------------------------------------------------------------------
+
+/**
+ * Error thrown when an OAuth endpoint (token, userinfo) responds with a
+ * non-2xx status. Carries the HTTP status, the response body (parsed as
+ * JSON when possible), and the response headers so callers can surface the
+ * server's actual error, e.g. an `invalid_grant` response after a grant has
+ * been revoked.
+ */
+export class OAuthRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: unknown,
+    readonly headers: Record<string, string>,
+  ) {
+    super(
+      `${message} (${status}): ${typeof body === "string" ? body : JSON.stringify(body)}`,
+    );
+    this.name = "OAuthRequestError";
+  }
+}
+
+/**
+ * Read a response body, parsing it as JSON when possible and falling back to
+ * the raw text.
+ */
+export async function parseResponseBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Convert response headers into a plain object so they can be serialised
+ * into an error payload.
+ */
+export function headersToObject(headers: Headers): Record<string, string> {
+  return Object.fromEntries(headers);
+}
+
 // -- OIDC Discovery ----------------------------------------------------------
 
 interface OidcDiscovery {
@@ -127,8 +171,13 @@ export async function exchangeCode(
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Token exchange failed (${response.status}): ${body}`);
+    const body = await parseResponseBody(response);
+    throw new OAuthRequestError(
+      "Token exchange failed",
+      response.status,
+      body,
+      headersToObject(response.headers),
+    );
   }
 
   const data = await response.json();
@@ -158,8 +207,13 @@ export async function refreshTokenSet(
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Token refresh failed (${response.status}): ${body}`);
+    const body = await parseResponseBody(response);
+    throw new OAuthRequestError(
+      "Token refresh failed",
+      response.status,
+      body,
+      headersToObject(response.headers),
+    );
   }
 
   const data = await response.json();
@@ -204,9 +258,12 @@ export async function fetchUserInfo(
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `UserInfo request failed (${response.status}): ${body}`
+    const body = await parseResponseBody(response);
+    throw new OAuthRequestError(
+      "UserInfo request failed",
+      response.status,
+      body,
+      headersToObject(response.headers),
     );
   }
 

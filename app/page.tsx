@@ -78,10 +78,22 @@ export default function Home() {
 
     try {
       const res = await fetch(`/api/ere/${endpoint}`);
-      const data = await res.json();
+      const text = await res.text();
+      let data: Record<string, unknown> | null = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // Non-JSON response; fall through to the raw text below.
+      }
 
       if (!res.ok) {
-        setErr(data.error || `Request failed with status ${res.status}`);
+        // Surface the full error payload, including the upstream API's
+        // actual JSON error body, rather than just the summary message.
+        setErr(
+          data
+            ? JSON.stringify(data, null, 2)
+            : `Request failed with status ${res.status}:\n${text}`
+        );
       } else {
         setData(data);
       }
@@ -101,11 +113,21 @@ export default function Home() {
       const res = await fetch(
         `/api/ere/sessions/all?pageSize=${encodeURIComponent(pageSize)}`
       );
-      const data = await res.json();
+      const text = await res.text();
+      let data: AllSessionsResult | null = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // Non-JSON response; fall through to the raw text below.
+      }
 
       if (!res.ok) {
+        // Surface the full error payload, including the upstream API's
+        // actual JSON error body, rather than just the summary message.
         setAllSessionsError(
-          data.error || `Request failed with status ${res.status}`
+          data
+            ? JSON.stringify(data, null, 2)
+            : `Request failed with status ${res.status}:\n${text}`
         );
       } else {
         setAllSessions(data);
@@ -216,9 +238,9 @@ export default function Home() {
             </Button>
 
             {chargersError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
                 {chargersError}
-              </div>
+              </pre>
             )}
 
             {chargersData !== null && (
@@ -247,9 +269,9 @@ export default function Home() {
             </Button>
 
             {sessionsError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
                 {sessionsError}
-              </div>
+              </pre>
             )}
 
             {sessionsData !== null && (
@@ -296,9 +318,9 @@ export default function Home() {
             </div>
 
             {allSessionsError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
                 {allSessionsError}
-              </div>
+              </pre>
             )}
 
             {allSessions !== null && (
