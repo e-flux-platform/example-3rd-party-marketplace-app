@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AVAILABLE_SCOPES, OAUTH_SCOPES } from "@/lib/oauth";
+import { AVAILABLE_SCOPES, GATED_SCOPES, OAUTH_SCOPES, isGatedScope } from "@/lib/oauth";
 import { getDiscovery } from "@/lib/discovery";
 import {
   ensureRegistration,
@@ -63,6 +63,21 @@ function resolveScope(requested: unknown): string | NextResponse {
   if (invalid.length) {
     return NextResponse.json(
       { error: `Unsupported scope(s): ${invalid.join(", ")}` },
+      { status: 400 }
+    );
+  }
+  // Gated scopes are not in the provider's dynamic-registration allowlist —
+  // requesting one here would be rejected with `invalid_client_metadata`. Fail
+  // early with a clear message: use a preregistered client (a curated template
+  // or provider installation) for these.
+  const gated = (requested as string[]).filter(isGatedScope);
+  if (gated.length) {
+    return NextResponse.json(
+      {
+        error: `Scope(s) not available for dynamic registration: ${gated.join(
+          ", "
+        )}. These are gated to preregistered clients (${GATED_SCOPES.join(", ")}).`,
+      },
       { status: 400 }
     );
   }

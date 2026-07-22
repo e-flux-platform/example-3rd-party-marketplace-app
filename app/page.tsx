@@ -41,6 +41,7 @@ const AVAILABLE_SCOPES = [
   "email",
   "profile",
   "offline_access",
+  "ere",
   "chargers:read",
   "sessions:read",
   "account:read",
@@ -48,6 +49,14 @@ const AVAILABLE_SCOPES = [
   "mcp",
 ] as const;
 const REQUIRED_SCOPE = "openid";
+
+// Gated scopes: reserved for preregistered clients (curated templates / provider
+// installations). A dynamic (self-registering) client cannot request them — the
+// provider rejects them at registration — so the dynamic-mode UI blocks them and
+// the register/login requests below strip them. Kept in sync with GATED_SCOPES
+// in lib/oauth.ts.
+const GATED_SCOPES: readonly string[] = ["ere"];
+const isGatedScope = (scope: string) => GATED_SCOPES.includes(scope);
 
 // OIDC `prompt` values selectable before login. Kept in sync with
 // VALID_PROMPTS in app/oauth/login/route.ts. The empty value omits the
@@ -108,11 +117,15 @@ function ScopeSelect({
   onToggle,
   disabled,
   label = "Requested scopes",
+  dynamic = false,
 }: {
   selected: string[];
   onToggle: (scope: string) => void;
   disabled?: boolean;
   label?: string;
+  // When true this is a dynamic (self-registering) client, so gated scopes are
+  // not requestable and are shown disabled.
+  dynamic?: boolean;
 }) {
   return (
     <fieldset className="space-y-2">
@@ -120,17 +133,27 @@ function ScopeSelect({
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {AVAILABLE_SCOPES.map((scope) => {
           const required = scope === REQUIRED_SCOPE;
+          const gated = isGatedScope(scope);
+          const gatedBlocked = gated && dynamic;
           return (
             <label key={scope} className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={selected.includes(scope)}
-                disabled={required || disabled}
+                checked={selected.includes(scope) && !gatedBlocked}
+                disabled={required || disabled || gatedBlocked}
                 onChange={() => onToggle(scope)}
               />
               <span className="font-mono">{scope}</span>
               {required && (
                 <span className="text-xs text-muted-foreground">(required)</span>
+              )}
+              {gatedBlocked && (
+                <span className="text-xs text-muted-foreground">
+                  (preregistered only)
+                </span>
+              )}
+              {gated && !dynamic && (
+                <span className="text-xs text-muted-foreground">(gated)</span>
               )}
             </label>
           );
@@ -304,9 +327,10 @@ export default function Home() {
   const [regNotice, setRegNotice] = useState<string | null>(null);
   const [regRead, setRegRead] = useState<Record<string, unknown> | null>(null);
   const [newName, setNewName] = useState("");
-  // `mcp` (full-delegation) is off by default — opt in deliberately.
+  // `mcp` (full-delegation) and gated scopes (e.g. `ere`, preregistered-only)
+  // are off by default — opt in deliberately.
   const [selectedScopes, setSelectedScopes] = useState<string[]>(
-    AVAILABLE_SCOPES.filter((scope) => scope !== "mcp")
+    AVAILABLE_SCOPES.filter((scope) => scope !== "mcp" && !isGatedScope(scope))
   );
   // OIDC `prompt` value to send on the next login; chosen per login card.
   const [prompt, setPrompt] = useState<Prompt>("consent");
@@ -394,7 +418,10 @@ export default function Home() {
       const res = await fetch("/api/registration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scopes: selectedScopes }),
+        // Gated scopes can't be dynamically registered — never send them.
+        body: JSON.stringify({
+          scopes: selectedScopes.filter((s) => !isGatedScope(s)),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -660,6 +687,7 @@ export default function Home() {
                   selected={selectedScopes}
                   onToggle={toggleScope}
                   disabled={regBusy !== null}
+                  dynamic
                 />
                 <Button
                   onClick={registerNow}
@@ -687,6 +715,7 @@ export default function Home() {
                   selected={selectedScopes}
                   onToggle={toggleScope}
                   disabled={regBusy !== null}
+                  dynamic
                   label="Requested scopes (must be within the registered set)"
                 />
                 <PromptSelect
@@ -697,9 +726,13 @@ export default function Home() {
                 />
                 <Button
                   onClick={() => {
+                    // A dynamic client never holds a gated scope — strip them.
+                    const scope = selectedScopes
+                      .filter((s) => !isGatedScope(s))
+                      .join(" ");
                     window.location.href = `/oauth/login?mode=dynamic&prompt=${encodeURIComponent(
                       prompt
-                    )}&scope=${encodeURIComponent(selectedScopes.join(" "))}`;
+                    )}&scope=${encodeURIComponent(scope)}`;
                   }}
                   disabled={regBusy !== null}
                 >

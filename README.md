@@ -101,6 +101,12 @@ Browser                          App (Next.js)                    e-flux / Road
   - **Load Chargers** calls `GET /1/ere/chargers`
   - **Load Sessions** calls `GET /1/ere/sessions`
   - **Load /users/me** calls `GET /1/users/me` — ERE-unrelated; confirms the access token's ACL behaves as expected.
+
+  > The ERE endpoints require the **`ere`** scope, which is **gated**: it cannot
+  > be requested via dynamic registration (RFC 7591). Only a **preregistered**
+  > client — a curated template or a provider installation — can hold it. In the
+  > dynamic self-registration card the `ere` checkbox is therefore disabled; use
+  > the preregistered card (with `ere` selected) to exercise the ERE reads.
 - The app automatically refreshes the access token if it has expired.
 - A **Logout** button clears the session and returns to the login screen.
 

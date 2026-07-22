@@ -27,6 +27,11 @@ export const AVAILABLE_SCOPES = [
   "email",
   "profile",
   "offline_access",
+  // ERE (Emission Reduction Units) data — the user's charging sessions +
+  // station metadata via the /1/ere endpoints. A gated scope (see
+  // GATED_SCOPES): only preregistered clients (curated templates / provider
+  // installations) can request it, not dynamic self-registration.
+  "ere",
   "chargers:read",
   "sessions:read",
   // Read the user's own account via /1/accounts/self (name + contact).
@@ -38,6 +43,17 @@ export const AVAILABLE_SCOPES = [
   // scopes are dropped) and shows the "acts as you" consent.
   "mcp",
 ] as const;
+
+// Scopes the provider reserves for approved apps: they are NOT in the dynamic
+// registration allowlist, so a `POST /register` (RFC 7591) that asks for one is
+// rejected with `invalid_client_metadata`. They can only be requested by a
+// preregistered client (a curated template or a provider installation). Keep in
+// sync with the provider's DYNAMIC_REGISTRATION_GATED_SCOPES.
+export const GATED_SCOPES = ["ere"] as const;
+
+export function isGatedScope(scope: string): boolean {
+  return (GATED_SCOPES as readonly string[]).includes(scope);
+}
 
 // Default / full scope set (preregistered mode requests all of these).
 export const OAUTH_SCOPES = AVAILABLE_SCOPES.join(" ");

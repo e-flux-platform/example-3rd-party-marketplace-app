@@ -5,6 +5,7 @@ import {
   isPreregisteredConfigured,
   OAuthMode,
   AVAILABLE_SCOPES,
+  isGatedScope,
 } from "@/lib/oauth";
 import { getSession, saveSession } from "@/lib/session";
 
@@ -73,7 +74,11 @@ export async function GET(request: NextRequest) {
     const picked = rawScope
       .split(/\s+/)
       .filter(Boolean)
-      .filter((s) => (AVAILABLE_SCOPES as readonly string[]).includes(s));
+      .filter((s) => (AVAILABLE_SCOPES as readonly string[]).includes(s))
+      // A dynamic client can never have registered a gated scope, so drop them
+      // rather than send a request the provider will reject. Preregistered
+      // clients keep them (their installation may hold the scope).
+      .filter((s) => mode !== "dynamic" || !isGatedScope(s));
     const withOpenId = picked.includes("openid") ? picked : ["openid", ...picked];
     if (withOpenId.length > 0) requestedScope = withOpenId.join(" ");
   }
